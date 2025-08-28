@@ -23,7 +23,7 @@ import os
 
 from dotenv import load_dotenv
 from loguru import logger
-from pipecat.frames.frames import LLMRunFrame
+from pipecat.frames.frames import LLMMessagesAppendFrame
 
 print("🚀 Starting Pipecat bot...")
 print("⏳ Loading models and imports (20 seconds first run only)\n")
@@ -41,10 +41,12 @@ from pipecat.processors.frameworks.rtvi import RTVIConfig, RTVIObserver, RTVIPro
 from pipecat.runner.types import RunnerArguments
 from pipecat.runner.utils import create_transport
 from pipecat.services.cartesia.tts import CartesiaTTSService
-from pipecat.services.deepgram.stt import DeepgramSTTService
-from pipecat.services.openai.llm import OpenAILLMService
+from pipecat.services.groq.stt import GroqSTTService
+from pipecat.services.groq.tts import GroqTTSService
+from pipecat.services.groq.llm import GroqLLMService
 from pipecat.transports.base_transport import BaseTransport, TransportParams
 from pipecat.transports.services.daily import DailyParams
+from pipecat.transcriptions.language import Language
 
 logger.info("✅ All components loaded successfully!")
 
@@ -54,14 +56,21 @@ load_dotenv(override=True)
 async def run_bot(transport: BaseTransport, runner_args: RunnerArguments):
     logger.info(f"Starting bot")
 
-    stt = DeepgramSTTService(api_key=os.getenv("DEEPGRAM_API_KEY"))
-
-    tts = CartesiaTTSService(
-        api_key=os.getenv("CARTESIA_API_KEY"),
-        voice_id="71a7ad14-091c-4e8e-a314-022ece01c121",  # British Reading Lady
+    stt = GroqSTTService(
+        api_key=os.getenv("GROQ_API_KEY"),
+        language=Language.EN
     )
-
-    llm = OpenAILLMService(api_key=os.getenv("OPENAI_API_KEY"))
+    
+    tts = GroqTTSService(
+        api_key=os.getenv("GROQ_API_KEY"),
+        model_name="playai-tts",
+        voice_id="Celeste-PlayAI",
+        params=GroqTTSService.InputParams(
+            language=Language.EN,
+            speed=1.0
+        )
+    )
+    llm = GroqLLMService(api_key=os.getenv("GROQ_API_KEY"))
 
     messages = [
         {
@@ -102,7 +111,8 @@ async def run_bot(transport: BaseTransport, runner_args: RunnerArguments):
         logger.info(f"Client connected")
         # Kick off the conversation.
         messages.append({"role": "system", "content": "Say hello and briefly introduce yourself."})
-        await task.queue_frames([LLMRunFrame()])
+        # await task.queue_frames([LLMRunFrame()])
+        await task.queue_frames([LLMMessagesAppendFrame(messages, run_llm=True)])
 
     @transport.event_handler("on_client_disconnected")
     async def on_client_disconnected(transport, client):
